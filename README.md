@@ -1,9 +1,3 @@
-## Writeup Template
-
-### You use this file as a template for your writeup.
-
----
-
 **Lane Finding Project**
 
 The goals / steps of this project are the following:
@@ -19,7 +13,8 @@ The goals / steps of this project are the following:
 
 [//]: # (Image References)
 
-[image1]: ./examples/undistort_output.png "Undistorted"
+[image0]: ./output_images/corners_calibration2.jpg "Chessboard corners"
+[image1]: ./output_images/undistort_calibration1.jpg "Undistorted"
 [image2]: ./test_images/test1.jpg "Road Transformed"
 [image3]: ./examples/binary_combo_example.jpg "Binary Example"
 [image4]: ./examples/warped_straight_lines.jpg "Warp Example"
@@ -31,15 +26,24 @@ The goals / steps of this project are the following:
 
 ### Writeup / README
 
-#### 1. Provide a Writeup that includes all the rubric points and how you addressed each one.
-
-You're reading it!
-
 ### Camera Calibration
 
-#### 1. Briefly state how you computed the camera matrix and distortion coefficients. Provide an example of a distortion corrected calibration image.
+The code is in `calibrate_camera()` in `src/calibration.py`. Run `python src/calibration.py` to recompute the calibration and regenerate the example images.
 
-TODO: Add your text here!!!
+`cv2.findChessboardCorners()` is used to look for the 9x6 inner corners for each chessboard image in `camera_cal/` and refine them to sub-pixel accuracy with `cv2.cornerSubPix()`. Each successful detection adds two things:
+
+* the corners' image coordinates (`imgpoints`);
+* the same fixed grid of "object points" `(0,0,0), (1,0,0), ..., (8,5,0)` (`objpoints`). The board is assumed to lie in the z=0 plane, so this grid is identical for every image.
+
+Corners were found in 17 of the 20 images. In `calibration1.jpg`, `calibration4.jpg` and `calibration5.jpg` part of the board is outside the frame, so they are skipped. Two images (`calibration7.jpg`, `calibration15.jpg`) are 1281x721 instead of 1280x720. They are cropped to 1280x720, which leaves the pixel coordinates unchanged.
+
+`cv2.calibrateCamera()` then computes the camera matrix and the distortion coefficients from all point pairs. The RMS reprojection error is 1.00 px. The result is saved to `camera_cal/calibration.npz`, so later steps load it with `load_calibration()` instead of recalibrating.
+
+![Chessboard corners][image0]
+
+Applying the result with `cv2.undistort()` (`undistort()` in `src/calibration.py`) straightens the strong barrel distortion in `calibration1.jpg`. That image was not used for calibration:
+
+![Undistorted][image1]
 
 ### Pipeline (single images)
 
