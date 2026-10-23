@@ -23,12 +23,14 @@ The goals / steps of this project are the following:
 [image5]: ./output_images/fit_test5.jpg "Fit Visual"
 [image5a]: ./output_images/histogram_test5.jpg "Histogram"
 [image5b]: ./output_images/search_around_test5.jpg "Search around previous fit"
-[image6]: ./output_images/lane_test5.jpg "Output"
-[video1]: ./project_video.mp4 "Video"
+[image6]: ./output_images/final_test5.jpg "Output"
+[video1]: ./output_videos/project_video03_output.mp4 "Video"
 
 ---
 
 ### Writeup / README
+
+The images in `output_images/` and the videos in `output_videos/` are examples of the pipeline's results. The images used in each section were chosen to illustrate that step. The code is not tied to these inputs: `python src/pipeline.py INPUT [INPUT ...]` runs the full pipeline on any images, videos or directories of them taken with the calibrated camera. Inputs at a different resolution than the calibration are skipped, because the calibration and the perspective transform only apply to that camera.
 
 ### Camera Calibration
 
@@ -141,17 +143,32 @@ at the bottom of the image, closest to the car. The lane's radius is the mean of
 
 The code is in `draw_lane()` in `src/visualization.py`. Run `python src/visualization.py` to regenerate the example images. The lane is drawn in the birds-eye view, where the fits are defined: the area between the two fitted polynomials is filled green, and the detected line pixels are colored red (left) and blue (right). `cv2.warpPerspective()` with the inverse matrix `Minv` from section 3 warps the drawing back into the camera view. The lane area is blended onto the undistorted image at 30% opacity, and the line pixels are drawn on top at full opacity.
 
+Finally, `annotate()` writes the lane's radius of curvature and the vehicle's offset from the lane center (section 5) onto the image. `LanePipeline` in `src/pipeline.py` chains all steps:
+
 ![Output][image6]
 
 ### Pipeline (video)
 
 #### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
 
-TODO: Add your text here!!!
+An example of a video output can be found [here](./output_videos/project_video03_output.mp4). The other videos at the calibrated resolution can be processed and saved in `output_videos/` as well.
+
+For videos, `LanePipeline` in `src/pipeline.py` keeps track of the lane between frames:
+
+* **Search.** If the previous frame had a lane, the lines are searched around it (`search_around_poly()`, section 4). If that result is not plausible, the sliding-window search runs on the same frame.
+* **Sanity check.** `is_plausible()` accepts a detection only if both lines were found, the lane is about as wide as in the birds-eye view (within 30%), and the lines are roughly parallel. The radius of curvature is not limited, because tight curves are legitimate on winding roads.
+* **Smoothing.** Each `Line` keeps its last 5 accepted fits, and their average is drawn. This removes jitter between frames.
+* **Recovery.** If no plausible lane is found, the last good lane is still shown. After 5 failed frames in a row, the history is cleared, so a stale lane is not shown and the next frame starts over with the sliding windows.
 
 ### Discussion
 
 #### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
-TODO: Add your text here!!!
+**Inputs from a different framing.** The 960x540 inputs are either scaled-down or cropped versions of the calibrated camera's frame, and the pixels alone can't tell which. Their camera matrix is therefore unknown, so they are skipped. With the crop window as an extra camera setting, they could be processed as well.
+
+**Edges that look like lines.** The gradient mask finds any strong vertical edge, not only paint. In `challenge02.mp4` a seam between two kinds of asphalt runs along the middle of the lane, and the concrete barrier casts a sharp shadow next to the yellow line. These are sometimes detected as lane lines. The sanity check rejects most of these detections, so often no lane is shown rather than a wrong one, but not always. Relying more on color than on gradients, or filtering edges by their direction and by pairs of edges a line-width apart, would help.
+
+**Tight curves and changing light.** In the hairpins of `challenge03.mp4` the lines leave the fixed birds-eye trapezoid sideways within a few meters, and the polynomial can't describe them. Hard sunlight and deep shade in the same frame defeat fixed thresholds. A shorter look-ahead in tight curves, and thresholds that adapt to the image's brightness, would make the pipeline more robust.
+
+**Assumptions.** The perspective transform assumes a flat road and a fixed camera pitch, so hills and braking distort the birds-eye view. `fit_lane()` and the sanity check assume parallel lane lines, which does not hold where lanes merge or split. These cases are outside the scope of this project.
 

@@ -51,6 +51,19 @@ def draw_lane(undist, left_fit, right_fit, Minv, pixels=None):
     return out
 
 
+def annotate(img, radius, offset):
+    """Write the lane's radius of curvature and the car's offset from the lane center (meters)."""
+    side = "right" if offset > 0 else "left"
+    text = [f"Radius of curvature: {radius:.0f} m",
+            f"Vehicle is {abs(offset):.2f} m {side} of center"]
+    out = img.copy()
+    for i, line in enumerate(text):
+        org = (40, 60 + 55 * i)
+        cv2.putText(out, line, org, cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 6, cv2.LINE_AA)
+        cv2.putText(out, line, org, cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2, cv2.LINE_AA)
+    return out
+
+
 def save_histogram(hist, title, out_path):
     """Save a line plot of per-column pixel counts."""
     fig, ax = plt.subplots(figsize=(8, 3))
