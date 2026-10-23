@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from calibration import ROOT, OUT_DIR, load_calibration, correct_distortion
+from calibration import ROOT, DOCS_DIR, load_calibration, correct_distortion
 from visualization import save_comparison
 
 
@@ -56,4 +56,4 @@ if __name__ == "__main__":
         binary, gradient, color = threshold_binary(img)
         save_comparison([img, contributions(gradient, color), binary * 255],
                         ["Undistorted", "Gradient (green) / color (blue)", "Binary"],
-                        OUT_DIR / f"binary_{Path(name).stem}.jpg")
+                        DOCS_DIR / f"binary_{Path(name).stem}.jpg")

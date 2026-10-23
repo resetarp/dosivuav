@@ -13,24 +13,24 @@ The goals / steps of this project are the following:
 
 [//]: # (Image References)
 
-[image0]: ./output_images/corners_calibration2.jpg "Chessboard corners"
-[image1]: ./output_images/undistort_calibration1.jpg "Undistorted"
-[image2]: ./output_images/undistort_test1.jpg "Road Transformed"
-[image3]: ./output_images/binary_test5.jpg "Binary Example"
-[image3b]: ./output_images/binary_test4.jpg "Binary Example (shadows)"
-[image4]: ./output_images/warped_straight_lines1.jpg "Warp Example"
-[image4b]: ./output_images/warped_binary_test5.jpg "Warped binary"
-[image5]: ./output_images/fit_test5.jpg "Fit Visual"
-[image5a]: ./output_images/histogram_test5.jpg "Histogram"
-[image5b]: ./output_images/search_around_test5.jpg "Search around previous fit"
-[image6]: ./output_images/final_test5.jpg "Output"
+[image0]: ./docs/corners_calibration2.jpg "Chessboard corners"
+[image1]: ./docs/undistort_calibration1.jpg "Undistorted"
+[image2]: ./docs/undistort_test1.jpg "Road Transformed"
+[image3]: ./docs/binary_test5.jpg "Binary Example"
+[image3b]: ./docs/binary_test4.jpg "Binary Example (shadows)"
+[image4]: ./docs/warped_straight_lines1.jpg "Warp Example"
+[image4b]: ./docs/warped_binary_test5.jpg "Warped binary"
+[image5]: ./docs/fit_test5.jpg "Fit Visual"
+[image5a]: ./docs/histogram_test5.jpg "Histogram"
+[image5b]: ./docs/search_around_test5.jpg "Search around previous fit"
+[image6]: ./docs/final_test5.jpg "Output"
 [video1]: ./output_videos/project_video03_output.mp4 "Video"
 
 ---
 
 ### Writeup / README
 
-The images in `output_images/` and the videos in `output_videos/` are examples of the pipeline's results. The images used in each section were chosen to illustrate that step. The code is not tied to these inputs: `python src/pipeline.py INPUT [INPUT ...]` runs the full pipeline on any images, videos or directories of them taken with the calibrated camera. Inputs at a different resolution than the calibration are skipped, because the calibration and the perspective transform only apply to that camera.
+The figures in this writeup are stored in `docs/`, and each section's images were chosen to illustrate that step. `output_images/` and `output_videos/` contain the full pipeline's results on the provided test images and videos. All of these are examples. The code is not tied to these inputs: `python src/pipeline.py INPUT [INPUT ...]` runs the full pipeline on any images, videos or directories of them taken with the calibrated camera. Inputs at a different resolution than the calibration are skipped, because the calibration and the perspective transform only apply to that camera.
 
 ### Camera Calibration
 
@@ -166,7 +166,9 @@ For videos, `LanePipeline` in `src/pipeline.py` keeps track of the lane between 
 
 **Inputs from a different framing.** The 960x540 inputs are either scaled-down or cropped versions of the calibrated camera's frame, and the pixels alone can't tell which. Their camera matrix is therefore unknown, so they are skipped. With the crop window as an extra camera setting, they could be processed as well.
 
-**Edges that look like lines.** The gradient mask finds any strong vertical edge, not only paint. In `challenge02.mp4` a seam between two kinds of asphalt runs along the middle of the lane, and the concrete barrier casts a sharp shadow next to the yellow line. These are sometimes detected as lane lines. The sanity check rejects most of these detections, so often no lane is shown rather than a wrong one, but not always. Relying more on color than on gradients, or filtering edges by their direction and by pairs of edges a line-width apart, would help.
+**Edges that look like lines.** The gradient mask finds any strong vertical edge, not only paint. In `challenge02.mp4` a seam between two kinds of asphalt runs along the middle of the lane, and the concrete barrier casts a sharp shadow next to the yellow line. These are sometimes detected as lane lines. Requiring an edge to also be paint-colored (a logical AND of the two masks) removes them, but also removes real lines: faded or shaded paint fails the color thresholds, and a yellow line on pale concrete has almost no lightness edge. Detecting narrow bright stripes instead of edges (a morphological top-hat on lightness, and on the Lab b channel for yellow) rejects seams and shadow borders while keeping the lines.
+
+**A different camera angle.** Even with clean line detection, `challenge02.mp4` mostly fails the sanity check: throughout the video, the lines converge strongly in the birds-eye view instead of staying parallel. This means that the footage is likely from the vehicle driving uphill. Estimating the vanishing point from the detected lines while driving, and adjusting the transform to it, would fix this.
 
 **Tight curves and changing light.** In the hairpins of `challenge03.mp4` the lines leave the fixed birds-eye trapezoid sideways within a few meters, and the polynomial can't describe them. Hard sunlight and deep shade in the same frame defeat fixed thresholds. A shorter look-ahead in tight curves, and thresholds that adapt to the image's brightness, would make the pipeline more robust.
 

@@ -79,7 +79,7 @@ def save_histogram(hist, title, out_path):
 
 
 if __name__ == "__main__":
-    from calibration import ROOT, OUT_DIR, load_calibration, correct_distortion
+    from calibration import ROOT, DOCS_DIR, load_calibration, correct_distortion
     from lane_detection import find_lane_pixels, fit_lane
     from perspective import get_perspective_matrices, warp
     from thresholding import threshold_binary
@@ -92,4 +92,9 @@ if __name__ == "__main__":
         leftx, lefty, rightx, righty, _ = find_lane_pixels(binary_warped)
         left_fit, right_fit = fit_lane(leftx, lefty, rightx, righty, binary_warped.shape[0])
         lane = draw_lane(undist, left_fit, right_fit, Minv, (leftx, lefty, rightx, righty))
-        cv2.imwrite(str(OUT_DIR / f"lane_{name.split('.')[0]}.jpg"), lane)
+        cv2.imwrite(str(DOCS_DIR / f"lane_{name.split('.')[0]}.jpg"), lane)
+
+    # The complete result with the curvature and offset text, as produced by the full pipeline
+    from pipeline import LanePipeline
+    img = cv2.imread(str(ROOT / "test_images" / "test5.jpg"))
+    cv2.imwrite(str(DOCS_DIR / "final_test5.jpg"), LanePipeline().process(img))

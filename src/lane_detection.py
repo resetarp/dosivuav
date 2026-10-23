@@ -2,7 +2,7 @@
 import cv2
 import numpy as np
 
-from calibration import ROOT, OUT_DIR, load_calibration, correct_distortion
+from calibration import ROOT, DOCS_DIR, load_calibration, correct_distortion
 from perspective import get_perspective_matrices, warp
 from thresholding import threshold_binary
 from visualization import save_comparison, save_histogram
@@ -132,14 +132,14 @@ if __name__ == "__main__":
                          draw_fit(binary_warped, leftx, lefty, rightx, righty,
                                   left_fit, right_fit, windows)],
                         ["Warped binary", "Sliding windows and fit"],
-                        OUT_DIR / f"fit_{stem}.jpg")
+                        DOCS_DIR / f"fit_{stem}.jpg")
         print(f"{name}: left {np.round(left_fit, 5)}, right {np.round(right_fit, 5)}")
 
         if name == "test5.jpg":
             save_histogram(lane_histogram(binary_warped), "Bottom-half column sums of the warped binary",
-                           OUT_DIR / "histogram_test5.jpg")
+                           DOCS_DIR / "histogram_test5.jpg")
             # Search around the fit just found, as the next video frame would
             leftx, lefty, rightx, righty = search_around_poly(binary_warped, left_fit, right_fit)
             save_comparison([draw_fit(binary_warped, leftx, lefty, rightx, righty, left_fit,
                                       right_fit, search_margin=100)],
-                            ["Search around previous fit"], OUT_DIR / "search_around_test5.jpg")
+                            ["Search around previous fit"], DOCS_DIR / "search_around_test5.jpg")

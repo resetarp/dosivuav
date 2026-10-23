@@ -2,7 +2,7 @@
 import cv2
 import numpy as np
 
-from calibration import ROOT, OUT_DIR, IMAGE_SIZE, load_calibration, correct_distortion
+from calibration import ROOT, DOCS_DIR, IMAGE_SIZE, load_calibration, correct_distortion
 from thresholding import threshold_binary
 from visualization import save_comparison
 
@@ -41,11 +41,11 @@ if __name__ == "__main__":
         img = correct_distortion(cv2.imread(str(ROOT / "test_images" / name)), mtx, dist)
         save_comparison([draw_polygon(img, SRC), draw_polygon(warp(img, M), DST)],
                         ["Undistorted with source points", "Warped with destination points"],
-                        OUT_DIR / f"warped_{name.split('.')[0]}.jpg")
+                        DOCS_DIR / f"warped_{name.split('.')[0]}.jpg")
 
     # Curved road: binary image before and after warping
     img = correct_distortion(cv2.imread(str(ROOT / "test_images" / "test5.jpg")), mtx, dist)
     binary, _, _ = threshold_binary(img)
     save_comparison([draw_polygon(img, SRC), warp(binary * 255, M)],
                     ["Undistorted with source points", "Warped binary"],
-                    OUT_DIR / "warped_binary_test5.jpg")
+                    DOCS_DIR / "warped_binary_test5.jpg")

@@ -13,13 +13,14 @@ import cv2
 import imageio_ffmpeg
 import numpy as np
 
-from calibration import ROOT, OUT_DIR, IMAGE_SIZE, load_calibration, correct_distortion, matches_calibration
+from calibration import ROOT, IMAGE_SIZE, load_calibration, correct_distortion, matches_calibration
 from curvature import car_position_px, lane_measurements
 from lane_detection import find_lane_pixels, fit_lane, search_around_poly
 from perspective import DST, get_perspective_matrices, warp
 from thresholding import threshold_binary
 from visualization import annotate, draw_lane
 
+IMAGE_DIR = ROOT / "output_images"
 VIDEO_DIR = ROOT / "output_videos"
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 LANE_WIDTH_PX = DST[2, 0] - DST[1, 0]  # lane width in the birds-eye view
@@ -119,7 +120,8 @@ def process_image(path):
     if not matches_calibration(img):
         print(f"skipped {path.name}: {img.shape[1]}x{img.shape[0]} is not the calibrated resolution")
         return
-    out = OUT_DIR / f"final_{path.stem}.jpg"
+    IMAGE_DIR.mkdir(exist_ok=True)
+    out = IMAGE_DIR / f"final_{path.stem}.jpg"
     cv2.imwrite(str(out), LanePipeline().process(img))
     print(f"{path.name} -> {out.relative_to(ROOT)}")
 

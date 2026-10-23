@@ -10,7 +10,7 @@ from visualization import save_comparison
 ROOT = Path(__file__).resolve().parent.parent
 CAL_DIR = ROOT / "camera_cal"
 CAL_FILE = CAL_DIR / "calibration.npz"
-OUT_DIR = ROOT / "output_images"
+DOCS_DIR = ROOT / "docs"  # figures linked in README.md
 
 NX, NY = 9, 6  # inner chessboard corners per row and per column
 IMAGE_SIZE = (1280, 720)  # (width, height) of the camera that took the chessboard images
@@ -100,12 +100,12 @@ if __name__ == "__main__":
     found, corners = cv2.findChessboardCorners(gray, (NX, NY), None)
     corners_img = cv2.drawChessboardCorners(img.copy(), (NX, NY), corners, found)
     save_comparison([img, corners_img], ["Original", "Detected corners"],
-                    OUT_DIR / "corners_calibration2.jpg")
+                    DOCS_DIR / "corners_calibration2.jpg")
 
     # calibration1.jpg shows the strongest barrel distortion
     img = cv2.imread(str(CAL_DIR / "calibration1.jpg"))
     save_comparison([img, undistort(img, mtx, dist)], ["Original", "Undistorted"],
-                    OUT_DIR / "undistort_calibration1.jpg")
+                    DOCS_DIR / "undistort_calibration1.jpg")
 
     # Road image: the change is subtle, so also show the amplified per-pixel difference
     img = cv2.imread(str(ROOT / "test_images" / "test1.jpg"))
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     diff = cv2.cvtColor(cv2.absdiff(img, undist), cv2.COLOR_BGR2GRAY)
     diff = cv2.convertScaleAbs(diff, alpha=3)
     save_comparison([img, undist, diff], ["Original", "Undistorted", "Difference (x3)"],
-                    OUT_DIR / "undistort_test1.jpg")
+                    DOCS_DIR / "undistort_test1.jpg")
 
     skipped = [p.name for p in sorted((ROOT / "test_images").iterdir())
                if cv2.haveImageReader(str(p)) and not matches_calibration(cv2.imread(str(p)))]
