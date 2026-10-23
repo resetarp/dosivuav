@@ -72,6 +72,30 @@ def fit_polynomial(x, y, min_pixels=50):
     return np.polyfit(y, x, 2)
 
 
+def fit_lane(leftx, lefty, rightx, righty, height, min_span=0.4):
+    """Fit both lines; a line seen only over a short stretch borrows the other line's shape.
+
+    A second-order fit through a short stretch of pixels, such as a single dash, can bend in
+    any direction. If a line's pixels cover less than min_span of the image height and the
+    other line's cover more, the lines' parallelism is used: the weak line gets the other
+    line's A and B, and only its offset C is fitted (as the mean residual of its pixels).
+    The vertical extent is measured between the 5th and 95th percentile of the pixels' y,
+    so a few stray pixels far from the line don't count as coverage.
+
+    Returns (left_fit, right_fit); either may be None if a line has too few pixels.
+    """
+    fits = [fit_polynomial(leftx, lefty), fit_polynomial(rightx, righty)]
+    pixels = [(leftx, lefty), (rightx, righty)]
+    spans = [np.subtract(*np.percentile(y, [95, 5])) / height if fit is not None else 0
+             for fit, (_, y) in zip(fits, pixels)]
+    for weak, strong in ((0, 1), (1, 0)):
+        if fits[weak] is not None and spans[weak] < min_span <= spans[strong]:
+            x, y = pixels[weak]
+            A, B, _ = fits[strong]
+            fits[weak] = np.array([A, B, np.mean(x - A * y ** 2 - B * y)])
+    return fits[0], fits[1]
+
+
 def draw_fit(binary_warped, leftx, lefty, rightx, righty, left_fit, right_fit, windows=(),
              search_margin=None):
     """Line pixels in red (left) and blue (right), windows or search band in green, fits in yellow."""
@@ -102,7 +126,7 @@ if __name__ == "__main__":
         img = correct_distortion(cv2.imread(str(ROOT / "test_images" / name)), mtx, dist)
         binary_warped = warp(threshold_binary(img)[0], M)
         leftx, lefty, rightx, righty, windows = find_lane_pixels(binary_warped)
-        left_fit, right_fit = fit_polynomial(leftx, lefty), fit_polynomial(rightx, righty)
+        left_fit, right_fit = fit_lane(leftx, lefty, rightx, righty, binary_warped.shape[0])
         stem = name.split(".")[0]
         save_comparison([binary_warped * 255,
                          draw_fit(binary_warped, leftx, lefty, rightx, righty,

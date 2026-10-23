@@ -80,45 +80,62 @@ Some noise remains, mostly trees, sky and cars outside the road area. The perspe
 
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
-The code is in `src/perspective.py`. Run `python src/perspective.py` to regenerate the example images. `get_perspective_matrices()` computes the matrix `M` from the camera view to the birds-eye view with `cv2.getPerspectiveTransform()`, and the inverse `Minv` for warping results back in section 6. `warp()` applies a matrix with `cv2.warpPerspective()`.
+The code is in `src/perspective.py`. `get_perspective_matrices()` computes the matrix `M` from the camera view to the birds-eye view with `cv2.getPerspectiveTransform()`, and the inverse `Minv` for warping results back (section 6). `warp()` applies a matrix with `cv2.warpPerspective()`.
 
-The source points are measured rather than picked by eye. On the undistorted, thresholded `straight_lines1.jpg` and `straight_lines2.jpg`, a straight line is fitted to each lane line (`x = a*y + c`). Both images put the vanishing point at about (639, 420). The source trapezoid uses the lines' average positions at y=460 (far ahead) and y=680 (just above the hood, so the hood stays out of the birds-eye view). It is mapped to a rectangle with the lane lines at x=320 and x=960.
+The source points form a trapezoid on the road that becomes a rectangle in the birds-eye view. They were measured once on the straight-road images, by fitting a line to each lane line. The bottom edge sits just above the hood, so the hood stays out of the birds-eye view. Like the camera calibration, the points are a fixed setting of the camera mounting, and every image is warped with the same matrix.
 
-The source points are a fixed setting, like the camera calibration: they were measured once and every image is warped with the same matrix. Measured on their own, the two images disagree by 5-10 px, because the road's slope and the car's pitch differ slightly between them. No single flat-road transform fits both exactly, so the average is used. Fitting lines to the warped binary images shows the result: on `straight_lines1.jpg` both lane lines are vertical to within 1 px over the full image height, and on `straight_lines2.jpg` they drift by 10-17 px (about 2-3% of the lane width). These two images were also used for the measurement, so this check only shows that the measurement is consistent. The independent test comes later, with the lane width and curvature measured on the other test images and the videos.
+| Source | Destination |
+|:-:|:-:|
+| 582, 460 | 320, 0 |
+| 269, 680 | 320, 720 |
+| 1044, 680 | 960, 720 |
+| 702, 460 | 960, 0 |
+
+On a straight road the lane lines come out vertical and parallel:
 
 ![Warp Example][image4]
 
-On a curved road the lines stay parallel and curve together. This warped binary image is the input for the lane-pixel search:
+On a curved road they curve together. This warped binary image is the input for the lane-pixel search:
 
 ![Warped binary][image4b]
 
-The transform assumes a flat road and a fixed camera pitch. On hills, or when the car pitches while braking, the lines will no longer be exactly parallel in the birds-eye view.
+The transform assumes a flat road and a fixed camera pitch. On hills, or when the car pitches while braking, the lines are no longer exactly parallel in the birds-eye view.
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
-The code is in `src/lane_detection.py`. Run `python src/lane_detection.py` to regenerate the example images. The input is the warped binary image from section 3.
+The code is in `src/lane_detection.py`. The input is the warped binary image from section 3.
 
-**Starting points: histogram.** `lane_histogram()` sums the binary pixels in each column of the bottom half of the image. Near the car the lines are closest and most vertical, so they show up as two clear peaks. The highest peak left and right of the image center gives each line's starting x position:
+**Histogram.** `lane_histogram()` sums the binary pixels in each column of the bottom half of the image, where the lines are closest to the car and most vertical. The highest peak on each side of the image center gives each line's starting position:
 
 ![Histogram][image5a]
 
-**Sliding windows.** `find_lane_pixels()` places a window 200 px wide (+-100 px) and 80 px high (1/9 of the image height) on each starting position. All binary pixels inside it are assigned to that line. The window then moves up by its own height. If it contained more than 50 pixels, it is re-centred on their mean x, so the windows follow the line as it curves. Gaps between dashed markings are bridged because an empty window keeps its position.
+**Sliding windows.** `find_lane_pixels()` places a window on each starting position and assigns the binary pixels inside it to that line. The window then moves up one step at a time (9 steps over the image height). When it contains enough pixels, it is re-centred on their mean x, so the windows follow the line as it curves. In the gaps of a dashed line the window keeps its position.
 
-**Polynomial fit.** `fit_polynomial()` fits a second-order polynomial `x = A*y^2 + B*y + C` to each line's pixels with `np.polyfit()`. x is written as a function of y because the lines are nearly vertical, so a function of x would not be single-valued. With fewer than 50 pixels no fit is returned.
+**Polynomial fit.** `fit_polynomial()` fits `x = A*y^2 + B*y + C` to each line's pixels with `np.polyfit()`. x is a function of y because the lines are nearly vertical in the image.
 
-In the figure, left-line pixels are red, right-line pixels blue, the windows green and the fits yellow:
+A second-order fit through a short stretch of pixels, such as a single dash, can bend in any direction. `fit_lane()` therefore checks how much of the image height each line's pixels cover. If one line covers too little and the other enough, the weak line takes the other line's curvature (A and B), and only its position (C) is fitted from its own pixels. This assumes the two lane lines are parallel, which holds except where lanes merge or split. Those cases are outside the scope of this project.
+
+Left-line pixels are red, right-line pixels blue, the windows green and the fits yellow:
 
 ![Fit Visual][image5]
 
-Where the fitted lines meet the bottom of the image, they are 636-701 px apart on `test1`, `test3`, `test5` and `test6`. The perspective transform was designed for 640 px, so it holds to within 0-10% on images it was not measured from (see section 3). The lines are also fitted with similar curvature on both sides. The exception is `test1`, where only two dashes of the right line are visible and its fit rests on few pixels.
-
-**Search around the previous fit.** In a video the lines move little from one frame to the next. Once both lines have been found, `search_around_poly()` takes all pixels within +-100 px of the previous frame's fits instead of running the sliding windows again (green band). That is faster, and it is less likely to jump to noise, because the search starts where the line already was. This soution has an obvious issue though: what happens when a line moves outside of the +-100px range? This will be explained in the tracking section of the video pipeline below.
+**Search around the previous fit.** In a video the lines move little from one frame to the next. Once both lines have been found, `search_around_poly()` takes all pixels within a band around the previous frame's fits (green) instead of running the sliding windows again. That is faster, and it is less likely to jump to noise. This solution has an obvious issue though: what happens when a line moves outside of the +-100px range? This will be explained in the tracking section of the video pipeline below.
 
 ![Search around previous fit][image5b]
 
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
-TODO: Add your text here!!!
+The code is in `src/curvature.py`.
+
+**Pixels to meters.** The birds-eye view has a scale in each direction (`XM_PER_PIX`, `YM_PER_PIX`). Some known distance on the road is needed to express the result in meters. The scale depends only on how the camera is mounted and on the perspective transform, not on the road being driven. Like the calibration, it is a setup parameter, estimated once for this camera: about 3.7 m across the 640 px between the lane lines, and about 24 m of road over the 720 px image height.
+
+**Radius of curvature.** `fit_to_meters()` converts a fit from pixels to meters by scaling its coefficients (`A*xm/ym^2`, `B*xm/ym`, `C*xm`), so no refit is needed. `radius_of_curvature()` evaluates
+
+R = (1 + (2*A*y + B)^2)^(3/2) / |2*A|
+
+at the bottom of the image, closest to the car. The lane's radius is the mean of both lines' radii. A straight road gives a very large radius.
+
+**Vehicle position.** The camera is assumed to sit on the car's centerline, so the car is at the horizontal center of the camera image. `car_position_px()` maps that point through the perspective transform, because the source trapezoid is not symmetric about the image center. `vehicle_offset()` returns the distance between the car and the midpoint of the two lines at the bottom of the image, in meters. Positive means right of the lane center.
 
 #### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
