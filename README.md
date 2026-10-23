@@ -23,7 +23,7 @@ The goals / steps of this project are the following:
 [image5]: ./output_images/fit_test5.jpg "Fit Visual"
 [image5a]: ./output_images/histogram_test5.jpg "Histogram"
 [image5b]: ./output_images/search_around_test5.jpg "Search around previous fit"
-[image6]: ./examples/example_output.jpg "Output"
+[image6]: ./output_images/lane_test5.jpg "Output"
 [video1]: ./project_video.mp4 "Video"
 
 ---
@@ -139,7 +139,9 @@ at the bottom of the image, closest to the car. The lane's radius is the mean of
 
 #### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
-TODO: Add your text here!!!
+The code is in `draw_lane()` in `src/visualization.py`. Run `python src/visualization.py` to regenerate the example images. The lane is drawn in the birds-eye view, where the fits are defined: the area between the two fitted polynomials is filled green, and the detected line pixels are colored red (left) and blue (right). `cv2.warpPerspective()` with the inverse matrix `Minv` from section 3 warps the drawing back into the camera view. The lane area is blended onto the undistorted image at 30% opacity, and the line pixels are drawn on top at full opacity.
+
+![Output][image6]
 
 ### Pipeline (video)
 
