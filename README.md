@@ -16,7 +16,8 @@ The goals / steps of this project are the following:
 [image0]: ./output_images/corners_calibration2.jpg "Chessboard corners"
 [image1]: ./output_images/undistort_calibration1.jpg "Undistorted"
 [image2]: ./output_images/undistort_test1.jpg "Road Transformed"
-[image3]: ./examples/binary_combo_example.jpg "Binary Example"
+[image3]: ./output_images/binary_test5.jpg "Binary Example"
+[image3b]: ./output_images/binary_test4.jpg "Binary Example (shadows)"
 [image4]: ./examples/warped_straight_lines.jpg "Warp Example"
 [image5]: ./examples/color_fit_lines.jpg "Fit Visual"
 [image6]: ./examples/example_output.jpg "Output"
@@ -59,7 +60,20 @@ The calibration describes the camera's full 1280x720 frame. Some inputs are 960x
 
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
-TODO: Add your text here!!!
+The code is in `threshold_binary()` in `src/thresholding.py`. Run `python src/thresholding.py` to regenerate the example images. The undistorted image is converted to HLS, and two masks are combined with a logical OR:
+
+* **Gradient mask** (`sobel_x_mask()`): Sobel derivative in x on the lightness channel, scaled to 0-255 and kept between 20 and 100. Lane lines run roughly vertically in the image, so their edges have a strong horizontal gradient. This finds lines regardless of their color, including faint or worn ones.
+* **Color mask** (`color_mask()`), which is the union of:
+  * saturation between 170 and 255, with a lightness floor of 60. Saturation picks out yellow and white paint under changing light. The floor removes dark shadow pixels, which can also be highly saturated.
+  * yellow: hue 15-35 (OpenCV's 0-180 scale) with saturation >= 100 and lightness >= 80. This catches the yellow line on pale concrete, where saturation alone is weak.
+  * white: lightness >= 205.
+
+The middle panel shows which mask found each pixel: green for the gradient, blue for the color mask. Both lines are found in full, in the shade of the trees as well as on the pale concrete:
+
+![Binary Example][image3]
+![Binary Example (shadows)][image3b]
+
+Some noise remains, mostly trees, sky and cars outside the road area. The perspective transform in the next step keeps only the road in front of the car, which removes most of it. The scattered gradient pixels from the concrete texture are much sparser than the lane lines, so the histogram-based lane-pixel search (section 4) is not misled by them.
 
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
