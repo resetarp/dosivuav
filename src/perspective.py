@@ -10,8 +10,8 @@ from visualization import save_comparison
 # y=460 (far) and y=680 (just above the hood). They form a trapezoid on the flat road that
 # becomes a rectangle in the birds-eye view: straight lane lines map to vertical lines.
 
-# NOTE: This is here only to help with visualization and is not an attempt at hard-coded 
-# lane detection.
+# NOTE: These points describe how the camera sees a flat road ahead, a fixed setup
+# parameter like the calibration. They do not indicate where the lanes are in any image.
 SRC = np.float32([[582, 460], [269, 680], [1044, 680], [702, 460]])
 DST = np.float32([[320, 0], [320, 720], [960, 720], [960, 0]])
 

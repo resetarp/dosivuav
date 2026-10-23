@@ -20,7 +20,9 @@ The goals / steps of this project are the following:
 [image3b]: ./output_images/binary_test4.jpg "Binary Example (shadows)"
 [image4]: ./output_images/warped_straight_lines1.jpg "Warp Example"
 [image4b]: ./output_images/warped_binary_test5.jpg "Warped binary"
-[image5]: ./examples/color_fit_lines.jpg "Fit Visual"
+[image5]: ./output_images/fit_test5.jpg "Fit Visual"
+[image5a]: ./output_images/histogram_test5.jpg "Histogram"
+[image5b]: ./output_images/search_around_test5.jpg "Search around previous fit"
 [image6]: ./examples/example_output.jpg "Output"
 [video1]: ./project_video.mp4 "Video"
 
@@ -94,7 +96,25 @@ The transform assumes a flat road and a fixed camera pitch. On hills, or when th
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
-TODO: Add your text here!!!
+The code is in `src/lane_detection.py`. Run `python src/lane_detection.py` to regenerate the example images. The input is the warped binary image from section 3.
+
+**Starting points: histogram.** `lane_histogram()` sums the binary pixels in each column of the bottom half of the image. Near the car the lines are closest and most vertical, so they show up as two clear peaks. The highest peak left and right of the image center gives each line's starting x position:
+
+![Histogram][image5a]
+
+**Sliding windows.** `find_lane_pixels()` places a window 200 px wide (+-100 px) and 80 px high (1/9 of the image height) on each starting position. All binary pixels inside it are assigned to that line. The window then moves up by its own height. If it contained more than 50 pixels, it is re-centred on their mean x, so the windows follow the line as it curves. Gaps between dashed markings are bridged because an empty window keeps its position.
+
+**Polynomial fit.** `fit_polynomial()` fits a second-order polynomial `x = A*y^2 + B*y + C` to each line's pixels with `np.polyfit()`. x is written as a function of y because the lines are nearly vertical, so a function of x would not be single-valued. With fewer than 50 pixels no fit is returned.
+
+In the figure, left-line pixels are red, right-line pixels blue, the windows green and the fits yellow:
+
+![Fit Visual][image5]
+
+Where the fitted lines meet the bottom of the image, they are 636-701 px apart on `test1`, `test3`, `test5` and `test6`. The perspective transform was designed for 640 px, so it holds to within 0-10% on images it was not measured from (see section 3). The lines are also fitted with similar curvature on both sides. The exception is `test1`, where only two dashes of the right line are visible and its fit rests on few pixels.
+
+**Search around the previous fit.** In a video the lines move little from one frame to the next. Once both lines have been found, `search_around_poly()` takes all pixels within +-100 px of the previous frame's fits instead of running the sliding windows again (green band). That is faster, and it is less likely to jump to noise, because the search starts where the line already was. This soution has an obvious issue though: what happens when a line moves outside of the +-100px range? This will be explained in the tracking section of the video pipeline below.
+
+![Search around previous fit][image5b]
 
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
