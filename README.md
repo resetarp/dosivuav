@@ -15,7 +15,7 @@ The goals / steps of this project are the following:
 
 [image0]: ./output_images/corners_calibration2.jpg "Chessboard corners"
 [image1]: ./output_images/undistort_calibration1.jpg "Undistorted"
-[image2]: ./test_images/test1.jpg "Road Transformed"
+[image2]: ./output_images/undistort_test1.jpg "Road Transformed"
 [image3]: ./examples/binary_combo_example.jpg "Binary Example"
 [image4]: ./examples/warped_straight_lines.jpg "Warp Example"
 [image5]: ./examples/color_fit_lines.jpg "Fit Visual"
@@ -28,7 +28,7 @@ The goals / steps of this project are the following:
 
 ### Camera Calibration
 
-The code is in `calibrate_camera()` in `src/calibration.py`. Run `python src/calibration.py` to recompute the calibration and regenerate the example images.
+The code is in `calibrate_camera()` in `src/calibration.py`. Run `python src/calibration.py` to regenerate the example images, adding `--recalibrate` to recompute the calibration itself.
 
 `cv2.findChessboardCorners()` is used to look for the 9x6 inner corners for each chessboard image in `camera_cal/` and refine them to sub-pixel accuracy with `cv2.cornerSubPix()`. Each successful detection adds two things:
 
@@ -49,7 +49,13 @@ Applying the result with `cv2.undistort()` (`undistort()` in `src/calibration.py
 
 #### 1. Provide an example of a distortion-corrected image.
 
-TODO: Add your text here!!!
+Each road image is first corrected with `correct_distortion()` in `src/calibration.py`. It applies `cv2.undistort()` with the saved camera matrix and distortion coefficients. Passing the original camera matrix as the new one keeps the focal length, so the result is slightly zoomed in and has no black borders.
+
+On a road image the effect is subtle. It is easiest to see at the image edges: the car hood at the bottom and the white car on the right are pushed outward. The third panel shows the amplified per-pixel difference. It is mostly near zero in the middle of the image and grows toward the borders, as expected for radial distortion.
+
+![Distortion-corrected road image][image2]
+
+The calibration describes the camera's full 1280x720 frame. Some inputs are 960x540: `challange*.jpg`, `solid*.jpg`, `whiteCarLaneSwitch.jpg` and `project_video01/02.mp4`. A 960x540 image can be a scaled-down or a cropped version of the frame, and the pixels alone can't tell which. The camera matrix differs between the two cases, so the calibration can't be applied reliably. `correct_distortion()` leaves images at any other resolution than the calibrated one unchanged.
 
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
