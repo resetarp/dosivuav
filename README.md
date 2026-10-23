@@ -18,7 +18,8 @@ The goals / steps of this project are the following:
 [image2]: ./output_images/undistort_test1.jpg "Road Transformed"
 [image3]: ./output_images/binary_test5.jpg "Binary Example"
 [image3b]: ./output_images/binary_test4.jpg "Binary Example (shadows)"
-[image4]: ./examples/warped_straight_lines.jpg "Warp Example"
+[image4]: ./output_images/warped_straight_lines1.jpg "Warp Example"
+[image4b]: ./output_images/warped_binary_test5.jpg "Warped binary"
 [image5]: ./examples/color_fit_lines.jpg "Fit Visual"
 [image6]: ./examples/example_output.jpg "Output"
 [video1]: ./project_video.mp4 "Video"
@@ -77,7 +78,19 @@ Some noise remains, mostly trees, sky and cars outside the road area. The perspe
 
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
-TODO: Add your text here!!!
+The code is in `src/perspective.py`. Run `python src/perspective.py` to regenerate the example images. `get_perspective_matrices()` computes the matrix `M` from the camera view to the birds-eye view with `cv2.getPerspectiveTransform()`, and the inverse `Minv` for warping results back in section 6. `warp()` applies a matrix with `cv2.warpPerspective()`.
+
+The source points are measured rather than picked by eye. On the undistorted, thresholded `straight_lines1.jpg` and `straight_lines2.jpg`, a straight line is fitted to each lane line (`x = a*y + c`). Both images put the vanishing point at about (639, 420). The source trapezoid uses the lines' average positions at y=460 (far ahead) and y=680 (just above the hood, so the hood stays out of the birds-eye view). It is mapped to a rectangle with the lane lines at x=320 and x=960.
+
+The source points are a fixed setting, like the camera calibration: they were measured once and every image is warped with the same matrix. Measured on their own, the two images disagree by 5-10 px, because the road's slope and the car's pitch differ slightly between them. No single flat-road transform fits both exactly, so the average is used. Fitting lines to the warped binary images shows the result: on `straight_lines1.jpg` both lane lines are vertical to within 1 px over the full image height, and on `straight_lines2.jpg` they drift by 10-17 px (about 2-3% of the lane width). These two images were also used for the measurement, so this check only shows that the measurement is consistent. The independent test comes later, with the lane width and curvature measured on the other test images and the videos.
+
+![Warp Example][image4]
+
+On a curved road the lines stay parallel and curve together. This warped binary image is the input for the lane-pixel search:
+
+![Warped binary][image4b]
+
+The transform assumes a flat road and a fixed camera pitch. On hills, or when the car pitches while braking, the lines will no longer be exactly parallel in the birds-eye view.
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
