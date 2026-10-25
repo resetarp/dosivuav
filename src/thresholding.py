@@ -18,7 +18,12 @@ from visualization import save_comparison
 STRIPE_WIDTH = 31
 # Rows of the road area the thresholds are computed on: from the far edge of the birds-eye
 # trapezoid to its near edge above the hood. Sky, trees and the hood would distort them.
-ROAD_ROWS = slice(int(SRC[:, 1].min()), int(SRC[:, 1].max()))
+def road_rows_of(src):
+    """Rows between the far and the near edge of a birds-eye trapezoid."""
+    return slice(int(src[:, 1].min()), int(src[:, 1].max()))
+
+
+ROAD_ROWS = road_rows_of(SRC)
 # The road area is split into this many horizontal bands with a threshold each: lines far
 # ahead are thinner and blurrier, so they stand out less than lines near the car.
 ROAD_BANDS = 4

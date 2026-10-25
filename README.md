@@ -55,6 +55,31 @@ The camera calibration is already stored in `camera_cal/calibration.npz`, so the
 
 The figures in this writeup are in `docs/`, and each was chosen to illustrate its step. `output_images/` and `output_videos/` contain the pipeline's results on the provided test material. All of these are examples: the code is not tied to these inputs.
 
+### Applying the calibration to the 960x540 inputs
+
+The pipeline only processes inputs at the calibrated resolution (1280x720) and skips the 960x540 ones. Processing them is outside the scope of this project, but the calibration can be applied to them by hand.
+
+All 960x540 inputs come from the same camera as the rest of the material. When all frames of a video are averaged, the moving road blurs away, but dust specks and a reflection on the windshield stay sharp at fixed positions. They appear in the 960x540 videos too, at positions that one scale and one shift map onto the 1280x720 frames. The 960x540 files are re-framed versions of the original recordings, in one of two ways:
+
+* **The whole frame at 75% size**: `challange*.jpg`, with the car hood visible. Resizing them back to 1280x720 restores the original geometry, so the calibration applies unchanged: `cv2.undistort(cv2.resize(img, (1280, 720)), mtx, dist, None, mtx)`.
+* **A crop of the frame, resized to 960x540**: `solid*.jpg`, `whiteCarLaneSwitch.jpg` and `project_video01/02.mp4`. The crop is about x 144-1135, y 102-660 of the 1280x720 frame: the middle part, with the hood cut off.
+
+For the cropped inputs, the distortion coefficients stay the same, because they describe the lens. The camera matrix has to be adapted: cropping moves the principal point by the crop's origin, and resizing scales the focal lengths and the principal point. After resizing a cropped frame to 1280x720:
+
+```python
+x0, y0, crop_w, crop_h = 143.7, 102.3, 991.5, 557.7   # crop window in the 1280x720 frame
+k = 1280 / crop_w                                      # = 720 / crop_h
+mtx_crop = mtx.copy()
+mtx_crop[0, 0] *= k                                    # focal lengths
+mtx_crop[1, 1] *= k
+mtx_crop[0, 2] = (mtx[0, 2] - x0) * k                  # principal point
+mtx_crop[1, 2] = (mtx[1, 2] - y0) * k
+frame = cv2.resize(frame, (1280, 720))
+undistorted = cv2.undistort(frame, mtx_crop, dist, None, mtx_crop)
+```
+
+The rest of the pipeline would need the same adaptation for the cropped frames: the perspective points map into the crop with `x' = (x - x0) * k`, `y' = (y - y0) * k`, with the bottom edge raised so that it stays inside the crop. Once again this is out-of-scope for this project, but given the input material an explanation was due. In the rest of the README only 1280x720 images will be considered.
+
 ### Project layout
 
 | Path | Content |
@@ -62,6 +87,7 @@ The figures in this writeup are in `docs/`, and each was chosen to illustrate it
 | `src/calibration.py` | Chessboard calibration and distortion correction |
 | `src/thresholding.py` | Binary image of lane-line pixels: narrow white or yellow stripes |
 | `src/perspective.py` | Perspective transform to the birds-eye view and back |
+| `src/horizon.py` | Estimating the horizon of a video from its lane lines |
 | `src/lane_detection.py` | Histogram, sliding windows, search around the previous fit, polynomial fit |
 | `src/curvature.py` | Radius of curvature and vehicle offset in meters |
 | `src/visualization.py` | Drawing the lane onto the image, text overlay, writeup figures |
@@ -83,7 +109,7 @@ The figures in this writeup are in `docs/`, and each was chosen to illustrate it
 | 5 | Curvature and vehicle position | `lane_measurements()` | radius and offset in meters |
 | 6 | Drawing the result | `draw_lane()`, `annotate()` | output image |
 
-For videos, step 4 uses the lane of the previous frames, and the result goes through a plausibility check and smoothing before steps 5 and 6 (see "Pipeline (video)").
+For videos, step 3 uses the horizon estimated from the frames so far, step 4 uses the lane of the previous frames, and the result goes through a plausibility check and smoothing before steps 5 and 6 (see "Pipeline (video)").
 
 ### Camera Calibration
 
@@ -114,30 +140,28 @@ On a road image the effect is subtle. It is easiest to see at the image edges: t
 
 ![Distortion-corrected road image][image2]
 
-The calibration describes the camera's full 1280x720 frame. Some inputs are 960x540: `challange*.jpg`, `solid*.jpg`, `whiteCarLaneSwitch.jpg` and `project_video01/02.mp4`. A 960x540 image can be a scaled-down or a cropped version of the frame, and the pixels alone can't tell which. The camera matrix differs between the two cases, so the calibration can't be applied reliably. `correct_distortion()` leaves images at any other resolution than the calibrated one unchanged.
-
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
 The code is in `threshold_binary()` in `src/thresholding.py`. Run `python src/thresholding.py` to regenerate the example images.
 
-A painted lane line is a **narrow stripe that is lighter or more colorful than the road on both of its sides**. The binary image is built from exactly that property:
+A painted lane line is a **narrow stripe that is lighter or more colorful than the road on both of its sides**. The binary image is built from that property:
 
 * **Two HLS channels.** White paint stands out in the lightness channel. Yellow paint stands out in the saturation channel: asphalt, concrete and white paint are nearly grey, so a yellow line is visible there even on pale concrete, where it is not lighter than the road. Dark shadow pixels, foliage and sky can be saturated as well, so of the saturated stripes only those with a yellow hue (15-35 on OpenCV's 0-179 scale) are kept.
 * **Stripe response** (`stripe_response()`): a morphological top-hat with a horizontal structuring element 31 px wide. The opening removes every bright structure narrower than the element, and subtracting it from the channel leaves only those narrow structures. Flat areas give 0, and so do edges such as asphalt seams, shadow borders and the road edge, because they are darker on one side only.
-* **Threshold chosen per image** (`stripe_mask()`): Otsu's method splits the stripe responses on the road into two groups, road texture and stripes, so the threshold follows the light and contrast of every frame. Lines far ahead are thinner and blurrier and stand out less, so the road area is divided into 4 horizontal bands with a threshold each. A minimum contrast applies when a band contains no line and Otsu would split pure texture. Rows outside the road area (sky, trees, hood) stay empty.
+* **Threshold chosen per image** (`stripe_mask()`): Otsu's method splits the stripe responses on the road into two groups, road texture and stripes, so the threshold follows the light and contrast of every frame. Lines far ahead are thinner, blurrier and stand out less, so the road area is divided into 4 horizontal bands with a threshold each. A minimum contrast applies when a band contains no line and Otsu would split pure texture. Rows outside the road area (sky, trees, hood) stay empty.
 
 The two masks are combined with a logical OR. The middle panel shows which channel found each pixel: green for white stripes, blue for yellow ones. Both lines are found in full, in the shade of the trees as well as on the pale concrete:
 
 ![Binary Example][image3]
 ![Binary Example (shadows)][image3b]
 
-An earlier version of this step used fixed thresholds on a Sobel gradient and on HLS colors. It worked on the project video, but on the challenge videos asphalt seams and shadow borders were detected as lines, and fixed thresholds failed in deep shade and glare. See the discussion section.
+An earlier version of this step used fixed thresholds on a Sobel gradient and on HLS colors. It worked on the project video, but on the challenge videos asphalt seams and shadow borders were detected as lines, and fixed thresholds failed in deep shade and glare. Take a look at the discussion section for more info.
 
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
 The code is in `src/perspective.py`. `get_perspective_matrices()` computes the matrix `M` from the camera view to the birds-eye view with `cv2.getPerspectiveTransform()`, and the inverse `Minv` for warping results back (section 6). `warp()` applies a matrix with `cv2.warpPerspective()`.
 
-The source points form a trapezoid on the road that becomes a rectangle in the birds-eye view. They were measured once on the straight-road images, by fitting a line to each lane line. The bottom edge sits just above the hood, so the hood stays out of the birds-eye view. Like the camera calibration, the points are a fixed setting of the camera mounting, and every image is warped with the same matrix.
+The source points form a trapezoid on the road that becomes a rectangle in the birds-eye view. They were measured once on the straight-road images, by fitting a line to each lane line: where the lines cross the row just above the hood, and their vanishing point, where they meet on the horizon (row 420). `source_points()` builds the trapezoid from these: the bottom corners lie on the lane lines just above the hood, so the hood stays out of the birds-eye view, the sides point at the vanishing point, and the top edge lies 40 rows below the horizon. Like the camera calibration, these measurements are a fixed setting of the camera mounting. For the measured horizon this gives:
 
 | Source | Destination |
 |:-:|:-:|
@@ -154,7 +178,13 @@ On a curved road they curve together. This warped binary image is the input for 
 
 ![Warped binary][image4b]
 
-The transform assumes a flat road and a fixed camera pitch. On hills, or when the car pitches while braking, the lines are no longer exactly parallel in the birds-eye view.
+**The horizon moves.** The row of the horizon depends on the camera's pitch and on the slope of the road, so it differs between videos and changes on hills. With a wrong horizon, parallel lane lines converge or diverge in the birds-eye view. In videos the horizon is therefore estimated from the frames (`src/horizon.py`), and the trapezoid is rebuilt for it with `source_points()`. Keeping the top edge at the same distance below the horizon keeps the view looking the same distance ahead.
+
+* `vanishing_row()` finds line segments in the binary image with the probabilistic Hough transform (`cv2.HoughLinesP()`), using only the rows near the car. Segments leaning to the right on the left half form the left lane line, segments leaning to the left on the right half the right one. Each side's segments are averaged into one straight line, weighted by their length, and the two lines are intersected.
+* `HorizonEstimator` keeps the median of the last 3 seconds of these rows, which ignores single bad frames. Rows more than 60 px from the measured horizon are not a plausible pitch or slope change and are dropped.
+* Line segments near the car only point at the vanishing point on a nearly straight road, so the estimate is only updated while the tracked lane's radius is at least 500 m.
+
+Single images have no history, so they use the measured horizon. Both straight-road images and the project video agree with it within a few rows. In `challenge02.mp4`, the horizon lies about 25 rows lower, so the lines converged strongly in the fixed birds-eye view.
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
@@ -188,7 +218,7 @@ The code is in `src/curvature.py`.
 
 R = (1 + (2*A*y + B)^2)^(3/2) / |2*A|
 
-at the bottom of the image, closest to the car. The lane's radius is that of its center line, the mean of the two polynomials. Averaging the two radii instead would let one nearly straight line, with a radius close to infinity, dominate the result. A straight road gives a very large radius.
+at the bottom of the image, closest to the car. The lane's radius is that of its center line, the mean of the two polynomials. Averaging the two values instead would let one nearly straight line, with a radius close to infinity, dominate the result.
 
 **Vehicle position.** The camera is assumed to sit on the car's centerline, so the car is at the horizontal center of the camera image. `car_position_px()` maps that point through the perspective transform, because the source trapezoid is not symmetric about the image center. `vehicle_offset()` returns the distance between the car and the midpoint of the two lines at the bottom of the image, in meters. Positive means right of the lane center.
 
@@ -208,6 +238,7 @@ An example of a video output can be found [here](./output_videos/project_video03
 
 For videos, `LanePipeline` in `src/pipeline.py` keeps track of the lane between frames:
 
+* **Horizon.** The birds-eye view follows the estimated horizon of the video (section 3). When it moves, the tracked lane is converted into the new view.
 * **Search.** If the previous frame had a lane, the lines are searched around it (`search_around_poly()`, section 4). If that result is not plausible, the sliding-window search runs on the same frame.
 * **Sanity check.** `is_plausible()` accepts a detection only if both lines were found, the lane is about as wide as in the birds-eye view (within 30%), and the lines are roughly parallel. The radius of curvature is not limited, because tight curves are legitimate on winding roads.
 * **Smoothing.** Each `Line` keeps its last 5 accepted fits, and their average is drawn. This removes jitter between frames.
@@ -217,13 +248,13 @@ For videos, `LanePipeline` in `src/pipeline.py` keeps track of the lane between 
 
 #### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
-**Inputs from a different framing.** The 960x540 inputs are either scaled-down or cropped versions of the calibrated camera's frame, and the pixels alone can't tell which. Their camera matrix is therefore unknown, so they are skipped. With the crop window as an extra camera setting, they could be processed as well.
+**Inputs from a different framing.** The 960x540 inputs are either scaled-down or cropped versions of the calibrated camera's frame, and it would be complicated to try to tell which. The pipeline therefore skips them. Averaging the frames of the videos revealed the crop window, and with it the camera matrix (see "Applying the calibration to the 960x540 inputs"). Passing the framing as a camera setting would let the pipeline process them as well.
 
 **Edges that look like lines.** The first version of the thresholding combined a Sobel gradient mask and fixed color thresholds with a logical OR. The gradient mask finds any strong vertical edge, not only paint: in `challenge02.mp4` a seam between two kinds of asphalt runs along the lane, and the concrete barrier casts a sharp shadow next to the yellow line, and both were detected as lane lines. Requiring an edge to also be paint-colored (a logical AND of the two masks) removed them, but also removed real lines: faded or shaded paint failed the color thresholds, and a yellow line on pale concrete has almost no lightness edge. Detecting narrow stripes instead of edges, with thresholds chosen per image (section 2), solved both problems. The lane is now found in most of `challenge02.mp4` and `challenge03.mp4`.
 
-**A different camera angle.** Even with clean line detection, `challenge02.mp4` mostly fails the sanity check: throughout the video, the lines converge strongly in the birds-eye view instead of staying parallel. This means that the footage is likely from the vehicle driving uphill. Estimating the vanishing point from the detected lines while driving, and adjusting the transform to it, would fix this.
+**A different horizon.** Even with clean line detection, `challenge02.mp4` mostly failed the sanity check: throughout the video, the lines converged strongly in the birds-eye view instead of staying parallel. The horizon of that video lies about 25 rows lower than in the images the transform was measured on, because of the camera's pitch or the slope of the road. Estimating the horizon from the frames (section 3) fixed this, apart from the first seconds, while the estimate is still forming. In bends the estimate is paused, so on winding roads it reacts slowly to slope changes.
 
 **Tight curves and changing light.** In the hairpins of `challenge03.mp4` the lines leave the fixed birds-eye trapezoid sideways within a few meters, and the polynomial can't describe them. The thresholds adapt to each frame, but in strong glare the lines are washed out and can't be separated from the road at all. A shorter look-ahead in tight curves would help with the hairpins.
 
-**Assumptions.** The perspective transform assumes a flat road and a fixed camera pitch, so hills and braking distort the birds-eye view. `fit_lane()` and the sanity check assume parallel lane lines, which does not hold where lanes merge or split. These cases are outside the scope of this project.
+**Assumptions.** The perspective transform assumes a flat road between the car and the far edge of the view. The horizon estimate follows slow changes of pitch and slope, but not quick ones such as hard braking. `fit_lane()` and the sanity check assume parallel lane lines, which does not hold where lanes merge or split. These cases are outside the scope of this project.
 

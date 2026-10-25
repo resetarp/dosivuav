@@ -16,14 +16,20 @@ import numpy as np
 from calibration import ROOT, IMAGE_SIZE, load_calibration, correct_distortion, matches_calibration
 from curvature import car_position_px, lane_measurements
 from lane_detection import find_lane_pixels, fit_lane, search_around_poly
-from perspective import DST, get_perspective_matrices, warp
-from thresholding import threshold_binary
+from horizon import HorizonEstimator
+from perspective import DST, VANISHING_POINT, get_perspective_matrices, source_points, warp
+from thresholding import road_rows_of, threshold_binary
 from visualization import annotate, draw_lane
 
 IMAGE_DIR = ROOT / "output_images"
 VIDEO_DIR = ROOT / "output_videos"
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 LANE_WIDTH_PX = DST[2, 0] - DST[1, 0]  # lane width in the birds-eye view
+# The birds-eye view is rebuilt when the estimated horizon moved by at least this many rows
+HORIZON_UPDATE_ROWS = 2
+# The horizon is only estimated while the tracked lane is at least this straight (radius in m):
+# in a bend the line segments near the car don't point at the vanishing point
+MIN_RADIUS_FOR_HORIZON = 500
 
 
 class Line:
@@ -41,6 +47,14 @@ class Line:
 
     def reset(self):
         self.recent_fits.clear()
+
+    def reproject(self, transform, height):
+        """Express the remembered fits in another birds-eye view (transform: old view -> new)."""
+        ys = np.linspace(0, height - 1, 20)
+        for i, fit in enumerate(self.recent_fits):
+            points = np.float32(np.column_stack([np.polyval(fit, ys), ys]))[None]
+            moved = cv2.perspectiveTransform(points, transform)[0]
+            self.recent_fits[i] = np.polyfit(moved[:, 1], moved[:, 0], 2)
 
 
 def is_plausible(left_fit, right_fit, height, width_tolerance=0.3, parallel_tolerance=0.25):
@@ -61,16 +75,32 @@ def is_plausible(left_fit, right_fit, height, width_tolerance=0.3, parallel_tole
 
 
 class LanePipeline:
-    """Runs all steps on a frame. With track=True it keeps state between consecutive frames."""
+    """Runs all steps on a frame. With track=True it keeps state between consecutive frames.
+
+    While tracking, the horizon of the video is also estimated from its frames, and the
+    birds-eye view follows it.
+    """
 
     def __init__(self, track=False, max_misses=5):
         self.mtx, self.dist, _ = load_calibration()
-        self.M, self.Minv = get_perspective_matrices()
-        self.car_x = car_position_px(self.M)
         self.track = track
         self.max_misses = max_misses
         self.left, self.right = Line(), Line()
         self.misses = 0
+        self.horizon = HorizonEstimator() if track else None
+        self.radius = np.inf  # radius of the lane in the previous frame
+        self.set_horizon(VANISHING_POINT[1])
+
+    def set_horizon(self, horizon_y):
+        """Build the birds-eye view for a horizon row and move the tracked lane into it."""
+        src = source_points(horizon_y)
+        M, Minv = get_perspective_matrices(src)
+        if hasattr(self, "Minv"):
+            for line in (self.left, self.right):
+                line.reproject(M @ self.Minv, IMAGE_SIZE[1])
+        self.horizon_y, self.M, self.Minv = horizon_y, M, Minv
+        self.road_rows = road_rows_of(src)
+        self.car_x = car_position_px(M)
 
     def detect(self, binary_warped):
         """Fits for this frame, or (None, None) if no plausible lane was found.
@@ -90,7 +120,12 @@ class LanePipeline:
 
     def process(self, img):
         undist = correct_distortion(img, self.mtx, self.dist)
-        binary_warped = warp(threshold_binary(undist)[0], self.M)
+        binary = threshold_binary(undist, self.road_rows)[0]
+        if self.horizon is not None and self.radius >= MIN_RADIUS_FOR_HORIZON:
+            estimate = self.horizon.update(binary, self.horizon_y)
+            if estimate is not None and abs(estimate - self.horizon_y) >= HORIZON_UPDATE_ROWS:
+                self.set_horizon(estimate)
+        binary_warped = warp(binary, self.M)
         left_fit, right_fit = self.detect(binary_warped)
 
         if not self.track:
@@ -112,6 +147,7 @@ class LanePipeline:
             left_fit, right_fit = self.left.best_fit, self.right.best_fit
 
         radius, offset = lane_measurements(left_fit, right_fit, self.car_x, binary_warped.shape[0] - 1)
+        self.radius = radius
         return annotate(draw_lane(undist, left_fit, right_fit, self.Minv), radius, offset)
 
 
