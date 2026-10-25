@@ -28,9 +28,62 @@ The goals / steps of this project are the following:
 
 ---
 
-### Writeup / README
+### Setup and usage
 
-The figures in this writeup are stored in `docs/`, and each section's images were chosen to illustrate that step. `output_images/` and `output_videos/` contain the full pipeline's results on the provided test images and videos. All of these are examples. The code is not tied to these inputs: `python src/pipeline.py INPUT [INPUT ...]` runs the full pipeline on any images, videos or directories of them taken with the calibrated camera. Inputs at a different resolution than the calibration are skipped, because the calibration and the perspective transform only apply to that camera.
+Requirements: Python 3 with OpenCV, NumPy, matplotlib and imageio-ffmpeg (used to write H.264 videos).
+
+```bash
+# one-time setup
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+source .venv/bin/activate
+
+# full pipeline: any mix of images, videos and directories
+python src/pipeline.py test_images test_videos     # -> output_images/, output_videos/
+python src/pipeline.py test_videos/challenge01.mp4 # a single file
+
+# figures of the individual steps used in this writeup (-> docs/)
+python src/calibration.py     # add --recalibrate to recompute camera_cal/calibration.npz
+python src/thresholding.py
+python src/perspective.py
+python src/lane_detection.py
+python src/curvature.py       # prints the curvature and offset of the test images
+python src/visualization.py
+```
+
+The camera calibration is already stored in `camera_cal/calibration.npz`, so the pipeline runs without recalibrating. Inputs at a different resolution than the calibration (1280x720) are skipped, because the calibration and the perspective transform only apply to that camera.
+
+The figures in this writeup are in `docs/`, and each was chosen to illustrate its step. `output_images/` and `output_videos/` contain the pipeline's results on the provided test material. All of these are examples: the code is not tied to these inputs.
+
+### Project layout
+
+| Path | Content |
+|---|---|
+| `src/calibration.py` | Chessboard calibration and distortion correction |
+| `src/thresholding.py` | Binary image of lane-line pixels from color and gradient thresholds |
+| `src/perspective.py` | Perspective transform to the birds-eye view and back |
+| `src/lane_detection.py` | Histogram, sliding windows, search around the previous fit, polynomial fit |
+| `src/curvature.py` | Radius of curvature and vehicle offset in meters |
+| `src/visualization.py` | Drawing the lane onto the image, text overlay, writeup figures |
+| `src/pipeline.py` | `LanePipeline`, which chains all steps; lane tracking for videos; command line |
+| `camera_cal/` | Chessboard images and the stored calibration |
+| `docs/` | Figures used in this writeup |
+
+### Pipeline overview
+
+`LanePipeline.process()` in `src/pipeline.py` applies the steps to every image or video frame in this order. The sections below describe each step.
+
+| # | Step | Function | Output |
+|---|---|---|---|
+| 0 | Camera calibration (once, in advance) | `calibrate_camera()` | camera matrix, distortion coefficients |
+| 1 | Distortion correction | `correct_distortion()` | undistorted image |
+| 2 | Thresholding | `threshold_binary()` | binary image of lane-line pixels |
+| 3 | Perspective transform | `warp()` | birds-eye binary image |
+| 4 | Lane-line pixels and polynomial fit | `find_lane_pixels()` / `search_around_poly()`, `fit_lane()` | one polynomial per line |
+| 5 | Curvature and vehicle position | `lane_measurements()` | radius and offset in meters |
+| 6 | Drawing the result | `draw_lane()`, `annotate()` | output image |
+
+For videos, step 4 uses the lane of the previous frames, and the result goes through a plausibility check and smoothing before steps 5 and 6 (see "Pipeline (video)").
 
 ### Camera Calibration
 
