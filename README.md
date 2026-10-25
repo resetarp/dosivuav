@@ -60,7 +60,7 @@ The figures in this writeup are in `docs/`, and each was chosen to illustrate it
 | Path | Content |
 |---|---|
 | `src/calibration.py` | Chessboard calibration and distortion correction |
-| `src/thresholding.py` | Binary image of lane-line pixels from color and gradient thresholds |
+| `src/thresholding.py` | Binary image of lane-line pixels: narrow white or yellow stripes |
 | `src/perspective.py` | Perspective transform to the birds-eye view and back |
 | `src/lane_detection.py` | Histogram, sliding windows, search around the previous fit, polynomial fit |
 | `src/curvature.py` | Radius of curvature and vehicle offset in meters |
@@ -118,20 +118,20 @@ The calibration describes the camera's full 1280x720 frame. Some inputs are 960x
 
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
-The code is in `threshold_binary()` in `src/thresholding.py`. Run `python src/thresholding.py` to regenerate the example images. The undistorted image is converted to HLS, and two masks are combined with a logical OR:
+The code is in `threshold_binary()` in `src/thresholding.py`. Run `python src/thresholding.py` to regenerate the example images.
 
-* **Gradient mask** (`sobel_x_mask()`): Sobel derivative in x on the lightness channel, scaled to 0-255 and kept between 20 and 100. Lane lines run roughly vertically in the image, so their edges have a strong horizontal gradient. This finds lines regardless of their color, including faint or worn ones.
-* **Color mask** (`color_mask()`), which is the union of:
-  * saturation between 170 and 255, with a lightness floor of 60. Saturation picks out yellow and white paint under changing light. The floor removes dark shadow pixels, which can also be highly saturated.
-  * yellow: hue 15-35 (OpenCV's 0-180 scale) with saturation >= 100 and lightness >= 80. This catches the yellow line on pale concrete, where saturation alone is weak.
-  * white: lightness >= 205.
+A painted lane line is a **narrow stripe that is lighter or more colorful than the road on both of its sides**. The binary image is built from exactly that property:
 
-The middle panel shows which mask found each pixel: green for the gradient, blue for the color mask. Both lines are found in full, in the shade of the trees as well as on the pale concrete:
+* **Two HLS channels.** White paint stands out in the lightness channel. Yellow paint stands out in the saturation channel: asphalt, concrete and white paint are nearly grey, so a yellow line is visible there even on pale concrete, where it is not lighter than the road. Dark shadow pixels, foliage and sky can be saturated as well, so of the saturated stripes only those with a yellow hue (15-35 on OpenCV's 0-179 scale) are kept.
+* **Stripe response** (`stripe_response()`): a morphological top-hat with a horizontal structuring element 31 px wide. The opening removes every bright structure narrower than the element, and subtracting it from the channel leaves only those narrow structures. Flat areas give 0, and so do edges such as asphalt seams, shadow borders and the road edge, because they are darker on one side only.
+* **Threshold chosen per image** (`stripe_mask()`): Otsu's method splits the stripe responses on the road into two groups, road texture and stripes, so the threshold follows the light and contrast of every frame. Lines far ahead are thinner and blurrier and stand out less, so the road area is divided into 4 horizontal bands with a threshold each. A minimum contrast applies when a band contains no line and Otsu would split pure texture. Rows outside the road area (sky, trees, hood) stay empty.
+
+The two masks are combined with a logical OR. The middle panel shows which channel found each pixel: green for white stripes, blue for yellow ones. Both lines are found in full, in the shade of the trees as well as on the pale concrete:
 
 ![Binary Example][image3]
 ![Binary Example (shadows)][image3b]
 
-Some noise remains, mostly trees, sky and cars outside the road area. The perspective transform in the next step keeps only the road in front of the car, which removes most of it. The scattered gradient pixels from the concrete texture are much sparser than the lane lines, so the histogram-based lane-pixel search (section 4) is not misled by them.
+An earlier version of this step used fixed thresholds on a Sobel gradient and on HLS colors. It worked on the project video, but on the challenge videos asphalt seams and shadow borders were detected as lines, and fixed thresholds failed in deep shade and glare. See the discussion section.
 
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
@@ -188,7 +188,7 @@ The code is in `src/curvature.py`.
 
 R = (1 + (2*A*y + B)^2)^(3/2) / |2*A|
 
-at the bottom of the image, closest to the car. The lane's radius is the mean of both lines' radii. A straight road gives a very large radius.
+at the bottom of the image, closest to the car. The lane's radius is that of its center line, the mean of the two polynomials. Averaging the two radii instead would let one nearly straight line, with a radius close to infinity, dominate the result. A straight road gives a very large radius.
 
 **Vehicle position.** The camera is assumed to sit on the car's centerline, so the car is at the horizontal center of the camera image. `car_position_px()` maps that point through the perspective transform, because the source trapezoid is not symmetric about the image center. `vehicle_offset()` returns the distance between the car and the midpoint of the two lines at the bottom of the image, in meters. Positive means right of the lane center.
 
@@ -219,11 +219,11 @@ For videos, `LanePipeline` in `src/pipeline.py` keeps track of the lane between 
 
 **Inputs from a different framing.** The 960x540 inputs are either scaled-down or cropped versions of the calibrated camera's frame, and the pixels alone can't tell which. Their camera matrix is therefore unknown, so they are skipped. With the crop window as an extra camera setting, they could be processed as well.
 
-**Edges that look like lines.** The gradient mask finds any strong vertical edge, not only paint. In `challenge02.mp4` a seam between two kinds of asphalt runs along the middle of the lane, and the concrete barrier casts a sharp shadow next to the yellow line. These are sometimes detected as lane lines. Requiring an edge to also be paint-colored (a logical AND of the two masks) removes them, but also removes real lines: faded or shaded paint fails the color thresholds, and a yellow line on pale concrete has almost no lightness edge. Detecting narrow bright stripes instead of edges (a morphological top-hat on lightness, and on the Lab b channel for yellow) rejects seams and shadow borders while keeping the lines.
+**Edges that look like lines.** The first version of the thresholding combined a Sobel gradient mask and fixed color thresholds with a logical OR. The gradient mask finds any strong vertical edge, not only paint: in `challenge02.mp4` a seam between two kinds of asphalt runs along the lane, and the concrete barrier casts a sharp shadow next to the yellow line, and both were detected as lane lines. Requiring an edge to also be paint-colored (a logical AND of the two masks) removed them, but also removed real lines: faded or shaded paint failed the color thresholds, and a yellow line on pale concrete has almost no lightness edge. Detecting narrow stripes instead of edges, with thresholds chosen per image (section 2), solved both problems. The lane is now found in most of `challenge02.mp4` and `challenge03.mp4`.
 
 **A different camera angle.** Even with clean line detection, `challenge02.mp4` mostly fails the sanity check: throughout the video, the lines converge strongly in the birds-eye view instead of staying parallel. This means that the footage is likely from the vehicle driving uphill. Estimating the vanishing point from the detected lines while driving, and adjusting the transform to it, would fix this.
 
-**Tight curves and changing light.** In the hairpins of `challenge03.mp4` the lines leave the fixed birds-eye trapezoid sideways within a few meters, and the polynomial can't describe them. Hard sunlight and deep shade in the same frame defeat fixed thresholds. A shorter look-ahead in tight curves, and thresholds that adapt to the image's brightness, would make the pipeline more robust.
+**Tight curves and changing light.** In the hairpins of `challenge03.mp4` the lines leave the fixed birds-eye trapezoid sideways within a few meters, and the polynomial can't describe them. The thresholds adapt to each frame, but in strong glare the lines are washed out and can't be separated from the road at all. A shorter look-ahead in tight curves would help with the hairpins.
 
 **Assumptions.** The perspective transform assumes a flat road and a fixed camera pitch, so hills and braking distort the birds-eye view. `fit_lane()` and the sanity check assume parallel lane lines, which does not hold where lanes merge or split. These cases are outside the scope of this project.
 

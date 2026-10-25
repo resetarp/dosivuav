@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 
 from calibration import ROOT, DOCS_DIR, IMAGE_SIZE, load_calibration, correct_distortion
-from thresholding import threshold_binary
 from visualization import save_comparison
 
 # Lane-line positions measured on the undistorted straight_lines1/2 images (averaged), at
@@ -33,6 +32,8 @@ def draw_polygon(img, pts, color=(0, 0, 255)):
 
 
 if __name__ == "__main__":
+    from thresholding import threshold_binary
+
     mtx, dist, _ = load_calibration()
     M, Minv = get_perspective_matrices()
 

@@ -53,8 +53,12 @@ def vehicle_offset(left_fit, right_fit, car_x, y_eval, xm=XM_PER_PIX):
 
 
 def lane_measurements(left_fit, right_fit, car_x, y_eval):
-    """(radius in m, offset in m): the lane's radius is the mean of both lines' radii."""
-    radius = (radius_of_curvature(left_fit, y_eval) + radius_of_curvature(right_fit, y_eval)) / 2
+    """(radius in m, offset in m) of the lane.
+
+    The radius is that of the lane's center line, the mean of the two polynomials. Averaging
+    the two radii instead would let one nearly straight line (radius near infinity) dominate.
+    """
+    radius = radius_of_curvature((np.asarray(left_fit) + np.asarray(right_fit)) / 2, y_eval)
     return radius, vehicle_offset(left_fit, right_fit, car_x, y_eval)
 
 
